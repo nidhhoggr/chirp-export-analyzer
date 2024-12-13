@@ -22,6 +22,28 @@ function getColumnByName(row, name) {
   return row[columnIndex];
 }
 
+function omitFreqNameAndChannel(freqItem) {
+  return freqItem.slice(2);
+}
+
+function buildMappingFromStream(filename, opts, doneCb) {
+  fs.createReadStream(filename).pipe(buildMapping(filename, opts, doneCb));
+}
+
+function isNestedFrequencyMapping(frequencyMapping) {
+  return _.isArray(frequencyMapping[0]);
+}
+
+function isNumber(value) {
+  return /^-?\d*(\.\d+)?$/.test(value);
+}
+
+function findKeyByValue(obj, value) {
+  return _.findKey(obj, (val) => _.isEqual(val, value));
+};
+
+
+//@TODO get rid of these global variables
 const freqMapping = {};
 const nameMapping = {};
 const freqMappingDupes = {};
@@ -84,6 +106,8 @@ function buildMapping(name, {debug}, doneCb) {
   });
 }
 
+
+//@TODO get rid of these global variables
 const distinctFreqMappings = {}
 let mismatchFreqMappings = {};
 const matchingFreqMappings = {};
@@ -284,21 +308,6 @@ function compareFrequencyMismatch(freq1, freq2) {
   }
 }
 
-function omitFreqNameAndChannel(freqItem) {
-  return freqItem.slice(2);
-}
-
-function buildMappingFromStream(filename, opts, doneCb) {
-  fs.createReadStream(filename).pipe(buildMapping(filename, opts, doneCb));
-}
-
-function findKeyByValue(obj, value) {
-  return _.findKey(obj, (val) => _.isEqual(val, value));
-};
-
-function isNestedFrequencyMapping(frequencyMapping) {
-  return _.isArray(frequencyMapping[0]);
-}
 
 function buildFileMapping(filename, {debug}) {
   return new Promise(resolve => {
@@ -329,21 +338,13 @@ function buildFileMapping(filename, {debug}) {
 (async () => {
 
   function help() {
-    console.log("requires two files as arguments\n  compare export1.csv export2.csv [frequency]");
-    console.log("debug options\nDEBUG=[int] (values greater than 0 with increments to increase verbosity)");
-    console.log("IGNORE_POWER_DIFFERENCE=1 (set to ignore differences in the power");
+    console.log("usage:\n\tanalyze export1.csv [export2.csv] [frequency]");
+    console.log("environment variables:\n\tDEBUG=[int] (values greater than 0 with increments to increase verbosity)");
+    console.log("\tIGNORE_POWER_DIFFERENCE=1 (set to ignore differences in the power)");
   }
 
   const firstFile = process.argv[2];
-  const secondFile = process.argv[3]; 
-  const frequency = process.argv[4]; 
-
-  if (!firstFile || !secondFile) {
-    help();
-    process.exit(1);
-  } else {
-    console.log(`comparing ${firstFile} and ${secondFile}`);
-  }
+  const secondArg = process.argv[3]; 
 
   let debug;
   let debugLevel = 1;
@@ -367,8 +368,24 @@ function buildFileMapping(filename, {debug}) {
     opts["ignore_difference_columns"] = ["Power"];
   }
 
-  await buildFileMapping(firstFile, opts);
-  await buildFileMapping(secondFile, opts);
-  await compareFiles([firstFile, secondFile], opts);
-  await statistics({frequency}, opts);
+  if (firstFile && !isNumber(secondArg)) {
+    const secondFile = secondArg;
+    const frequency = process.argv[4]; 
+    debug(1)(`comparing ${firstFile} and ${secondFile}`);
+    await buildFileMapping(firstFile, opts);
+    await buildFileMapping(secondFile, opts);
+    await compareFiles([firstFile, secondFile], opts);
+    await statistics({frequency}, opts);
+
+  } else if (firstFile) {
+    const frequency = process.argv[3]; 
+    debug(1)(`analyzing ${firstFile}`);
+    await buildFileMapping(firstFile, opts);
+    await statistics({frequency}, opts);
+
+  } else {
+
+    help();
+    process.exit(1);
+  }
 })();
