@@ -1,6 +1,6 @@
 # chirp export analyzer
 
-this is a simple utility to analyze a csv export of a chirp file. It's most useful for comparing the differences between two seperate Chirp csv exports.
+this is a simple utility to analyze a csv export of a chirp file. It's most useful for comparing the differences between two separate Chirp csv exports.
 
 ## Usage
 
@@ -10,7 +10,7 @@ this is a simple utility to analyze a csv export of a chirp file. It's most usef
 ./analyze chirp-export.csv
 ```
 
-### Analyze a particular frequency is a single chrip file
+### Analyze a particular frequency in a single chrip file
 
 This is useful when there are multiple channels sharing the same frequency.
 
@@ -24,7 +24,7 @@ This is useful when there are multiple channels sharing the same frequency.
 ./analyze chirp-export-1.csv chirp-export-2.csv
 ```
 
-### Analyze a freqeuncy
+### Analyze a freqeuncy in either chirp file
 
 This is useful when there is a shared and/or mismatched frequency.
 
@@ -52,3 +52,28 @@ IGNORE_POWER_DIFFERENCE=1 ./analyze chirp-export-1.csv chirp-export-2.csv
 
 Usually there will be mismatches based on the power setting alone. When enabling this flag there should usually be less mismatches.
 
+## NOTE
+
+Mismatched only take into considerations every other filed besides the channel number and name. As a result, channels with the same settings but a different channel name or number will *NOT* be considered a mismatch. The following list is the name of the columns export from chirp in their respective order:
+
+ * Location
+ * Name
+ * Frequency
+ * Duplex
+ * Offset
+ * Tone
+ * rToneFreq
+ * cToneFreq
+ * DtcsCode
+ * DtcsPolarity
+ * RxDtcsCode
+ * CrossMode
+ * Mode
+ * TStep
+ * Skip
+ * Power
+ * Comment
+ * URCALL
+ * RPT1CALL
+ * RPT2CALL
+ * DVCODE
