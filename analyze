@@ -189,7 +189,7 @@ function compareFiles(filenames, opts) {
     const matchingFrequencies = _.keys(matchingFreqMappings);
 
     const intersection = _.intersection(mismatchingFrequencies,  matchingFrequencies);
-    opts.debug(2)(`omitting the intersecting freqMappings from mismathing: ${_.join(intersection)}`);
+    opts.debug(2)(`omitting the intersecting freqMappings from mismatching: ${_.join(intersection)}`);
     mismatchFreqMappings = _.omit(mismatchFreqMappings, intersection);
 
     distinctFreqMappings[secondFile] = {};
