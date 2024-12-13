@@ -42,6 +42,9 @@ function findKeyByValue(obj, value) {
   return _.findKey(obj, (val) => _.isEqual(val, value));
 };
 
+function isHeaderRowValid(headerRow) {
+  return headerRow == _.join(columnNames);
+}
 
 //@TODO get rid of these global variables
 const freqMapping = {};
@@ -62,6 +65,10 @@ function buildMapping(name, {debug}, doneCb) {
       nameMapping[name] = {};
     }
 
+    if (!isHeaderRowValid(records[0])) {
+      debug(0)("Detected invalid header row: ", _.join(records[0]));
+      process.exit(1);
+    }
     // Loop through each row in the CSV file
     for (const row of records.slice(1)) {//skip the first row
       const channelFreq = getColumnByName(row,"Frequency")
