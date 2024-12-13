@@ -54,7 +54,7 @@ Usually there will be mismatches based on the power setting alone. When enabling
 
 ## NOTE
 
-Mismatched only take into considerations every other filed besides the channel number and name. As a result, channels with the same settings but a different channel name or number will *NOT* be considered a mismatch. The following list is the name of the columns export from chirp in their respective order:
+Mismatches only take into consideration every field besides the channel number (name Location in the list below) and name. As a result, channels with the same settings but a different channel name or number will *NOT* be considered a mismatch. The following list is the name of the columns export from chirp in their respective order:
 
  * Location
  * Name
