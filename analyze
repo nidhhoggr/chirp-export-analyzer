@@ -40,7 +40,7 @@ const {
 
   ca = new ChirpAnalysis();
 
-  if (firstFile && !isNumber(secondArg)) {
+  if (firstFile && secondArg && !isNumber(secondArg)) {
     const secondFile = secondArg;
     const frequency = process.argv[4]; 
     debug(1)(`comparing ${firstFile} and ${secondFile}`);
