@@ -5,10 +5,6 @@ const { parse } = require('csv-parse');
 const _ = require("lodash");
 const ChirpChannel = require("./ChirpChannel");
 
-const columnNames = [
-  "Location","Name","Frequency","Duplex","Offset","Tone","rToneFreq","cToneFreq","DtcsCode","DtcsPolarity","RxDtcsCode","CrossMode","Mode","TStep","Skip","Power","Comment","URCALL","RPT1CALL","RPT2CALL","DVCODE"
-];
-
 function isNestedFrequencyMapping(frequencyMapping) {
   return _.isArray(frequencyMapping[0]);
 }
@@ -46,7 +42,7 @@ function buildMapping(filename, {debug}, doneCb) {
       if (!channelName || !channelFreq) continue;
 
       if (channelMapping.frequency[filename][channelFreq]) {
-        if (_.isEqual(ChirpChannel.omitChannelNumberAndName(row), ChirpChannel.omitChannelNumberAndName(channelMapping.frequency[filename][channelFreq]))) { 
+        if (ChirpChannel.areEqualRows(row, channelMapping.frequency[filename][channelFreq])) { 
           debug(1)(`detected matching duplicate frequency: ${filename}: ${channelName} - ${channelFreq}`);
           debug(2)(row, channelMapping.frequency[filename][channelFreq]);
           channelMapping.frequencyDupes[filename][channelFreq] = [
@@ -96,7 +92,7 @@ function compareVaryingFrequencySets({firstFreqMapping, firstFile}, {
         secondFreqMapping: freqItem, secondFile}, channelFreq, opts)
     }
   } else {
-    const freqsEq = _.isEqual(ChirpChannel.omitChannelNumberAndName(firstFreqMapping), ChirpChannel.omitChannelNumberAndName(secondFreqMapping));
+    const freqsEq = ChirpChannel.areEqualRows(firstFreqMapping, secondFreqMapping);
     if (!freqsEq) {
       const shouldIgnore = shouldIgnoreColumnDifference(firstFreqMapping, secondFreqMapping, opts);
 
@@ -250,29 +246,35 @@ function statistics({frequency}, {debug}) {
       }
       debug(1)(filename);
       if (isNestedFrequencyMapping(freqItem)) {
-        _.map(channelMapping.frequency[filename][frequency], (o) => debug(1)(_.zipObject(columnNames, o)));
+        _.map(channelMapping.frequency[filename][frequency], (o) => debug(1)(
+          ChirpChannel.toColumnKeyed(o)
+        ));
       } else {
-        debug(1)(_.zipObject(columnNames, channelMapping.frequency[filename][frequency]));
+        debug(1)(
+          ChirpChannel.toColumnKeyed(channelMapping.frequency[filename][frequency])
+        );
       }
     }
   } 
 }
 
 function compareChannelMismatch(chan1, chan2) {
-  const mismatchingZipped = _.map([chan1, chan2], (o) => _.zipObject(columnNames, o));
-  const intersection = _.intersection(chan1, chan2);
-  const difference = _.difference(
-    ChirpChannel.omitChannelNumberAndName(chan1),
-    ChirpChannel.omitChannelNumberAndName(chan2),
-   );
+  
+  const chirpChan1 = new ChirpChannel(chan1);
+  const chirpChan2 = new ChirpChannel(chan2);
+  const chirpChanZip1 = chirpChan1.getColumnKeyed();
+  const chirpChanZip2 = chirpChan2.getColumnKeyed();
+  const mismatchingZipped = [
+    chirpChanZip1,
+    chirpChanZip2,
+  ];
+  const intersection = chirpChan1.getIntersection(chirpChan2);
+  const difference = chirpChan1.getDifference(chirpChan2);
   const columns = [];
   for (const mv of difference) {
-    columns.push(findKeyByValue(mismatchingZipped[0], mv));
+    columns.push(findKeyByValue(chirpChanZip1, mv));
   }
-  const differenceReverse = _.difference(
-    ChirpChannel.omitChannelNumberAndName(chan2),
-    ChirpChannel.omitChannelNumberAndName(chan1),
-  );
+  const differenceReverse = chirpChan2.getDifference(chirpChan1);
   return {
     mismatchingZipped,
     intersection,

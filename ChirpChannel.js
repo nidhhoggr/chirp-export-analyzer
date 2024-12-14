@@ -34,6 +34,13 @@ class ChirpChannel {
     return row == _.join(this.columnNames);
   }
 
+  static areEqualRows(row1, row2) {
+    return _.isEqual(
+      ChirpChannel.omitChannelNumberAndName(row1), 
+      ChirpChannel.omitChannelNumberAndName(row2)
+    );
+  }
+
   static toColumnKeyed(row) {
     return _.zipObject(this.columnNames, row) 
   }
