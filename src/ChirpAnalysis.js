@@ -155,7 +155,7 @@ class ChirpAnalysis {
   }
 
   statistics({frequency}, {debug}) {
-    debug(1)({
+    const statistics = {
       mismatching: {
         length: _.keys(this.frequencyMapping.mismatching).length,
         frequencies: _.keys(this.frequencyMapping.mismatching),
@@ -208,16 +208,24 @@ class ChirpAnalysis {
           }), ' | ')
         }),
       }
-    });
+    };
+    debug(1)(statistics);
+    let channelComparison = {};
+    let channelMapping = {};
     if (frequency) {
+      let channelComparison = {};
       if (_.get(this.frequencyMapping.mismatching, frequency)) {
+        channelComparison = this.compareChannelMismatch(
+          this.frequencyMapping.mismatching[frequency][0], 
+          this.frequencyMapping.mismatching[frequency][1]
+        );
         const {
           mismatchingZipped,
           intersection,
           difference,
           differenceReverse,
           columns,
-        } = this.compareChannelMismatch(this.frequencyMapping.mismatching[frequency][0], this.frequencyMapping.mismatching[frequency][1]);
+        } = channelComparison;
         debug(1)("Mismatching", mismatchingZipped);
         debug(1)("Intersection", intersection);
         debug(1)(`Mismatching Columns: ${_.join(columns)}`);
@@ -228,6 +236,7 @@ class ChirpAnalysis {
       }
 
       for (const filename in this.channelMapping.frequency) {
+        channelMapping[filename] = [];
         const freqItem = this.channelMapping.frequency[filename][frequency];
         if (!freqItem) {
           debug(1)(`${filename} does not contain a channel with frequency: ${frequency}`);
@@ -235,16 +244,21 @@ class ChirpAnalysis {
         }
         debug(1)(filename);
         if (isNestedFrequencyMapping(freqItem)) {
-          _.map(this.channelMapping.frequency[filename][frequency], (o) => debug(1)(
-            ChirpChannel.toColumnKeyed(o)
-          ));
+          const ck = _.map(this.channelMapping.frequency[filename][frequency], o => ChirpChannel.toColumnKeyed(o))
+          ck.map(o => debug(1)(o));
+          channelMapping[filename].push(...ck);
         } else {
-          debug(1)(
-            ChirpChannel.toColumnKeyed(this.channelMapping.frequency[filename][frequency])
-          );
+          const ck = ChirpChannel.toColumnKeyed(this.channelMapping.frequency[filename][frequency]);
+          debug(1)(ck);
+          channelMapping[filename].push(ck);
         }
       }
-    } 
+    }
+    return {
+      statistics,
+      channelComparison,
+      channelMapping,
+    }
   }
 
   compareChannelMismatch(chan1, chan2) {

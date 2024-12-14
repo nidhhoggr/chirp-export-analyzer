@@ -4,6 +4,7 @@
   "author": "Joseph Persie",
   "dependencies": {
     "csv-parse": "^5.6.0",
+    "jest": "^29.7.0",
     "lodash": "^4.17.21"
   }
 }
