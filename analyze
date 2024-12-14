@@ -3,15 +3,7 @@
 const fs = require('fs');
 const { parse } = require('csv-parse');
 const _ = require("lodash");
-
-function sleep(milliSeconds) {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      resolve();
-      console.log("done");
-    }, milliSeconds);
-  });
-}
+const ChirpChannel = require("./ChirpChannel");
 
 const columnNames = [
   "Location","Name","Frequency","Duplex","Offset","Tone","rToneFreq","cToneFreq","DtcsCode","DtcsPolarity","RxDtcsCode","CrossMode","Mode","TStep","Skip","Power","Comment","URCALL","RPT1CALL","RPT2CALL","DVCODE"
@@ -26,10 +18,6 @@ function omitFreqNameAndChannel(freqItem) {
   return freqItem.slice(2);
 }
 
-function buildMappingFromStream(filename, opts, doneCb) {
-  fs.createReadStream(filename).pipe(buildMapping(filename, opts, doneCb));
-}
-
 function isNestedFrequencyMapping(frequencyMapping) {
   return _.isArray(frequencyMapping[0]);
 }
@@ -42,32 +30,22 @@ function findKeyByValue(obj, value) {
   return _.findKey(obj, (val) => _.isEqual(val, value));
 };
 
-function isHeaderRowValid(headerRow) {
-  return headerRow == _.join(columnNames);
-}
-
-//@TODO get rid of these global variables
-const freqMapping = {};
-const nameMapping = {};
-const freqMappingDupes = {};
-
-function buildMapping(name, {debug}, doneCb) {
-  return parse({ delimiter: ',' }, function (err, records) {
+function buildMapping(filename, {debug}, doneCb) {
+  return fs.createReadStream(filename).pipe(parse({ delimiter: ',' }, function (err, records) {
     if (err) throw err;
 
-    if (!freqMapping[name]) {
-      freqMapping[name] = {};
+    if (!channelMapping.frequency[filename]) {
+      channelMapping.frequency[filename] = {};
     }
-    if (!freqMappingDupes[name]) {
-      freqMappingDupes[name] = {};
+    if (!channelMapping.frequencyDupes[filename]) {
+      channelMapping.frequencyDupes[filename] = {};
     }
-    if (!nameMapping[name]) {
-      nameMapping[name] = {};
+    if (!channelMapping.name[filename]) {
+      channelMapping.name[filename] = {};
     }
 
-    if (!isHeaderRowValid(records[0])) {
-      debug(0)("Detected invalid header row: ", _.join(records[0]));
-      process.exit(1);
+    if (!ChirpChannel.isValidHeader(records[0])) {
+      throw new Error(`Detected invalid header row: ${_.join(records[0])}`);
     }
     // Loop through each row in the CSV file
     for (const row of records.slice(1)) {//skip the first row
@@ -76,48 +54,42 @@ function buildMapping(name, {debug}, doneCb) {
   
       if (!channelName || !channelFreq) continue;
 
-      if (freqMapping[name][channelFreq]) {
-        if (_.isEqual(omitFreqNameAndChannel(row), omitFreqNameAndChannel(freqMapping[name][channelFreq]))) { 
-          debug(1)(`detected matching duplicate frequency: ${name}: ${channelName} - ${channelFreq}`);
-          debug(2)(row, freqMapping[name][channelFreq]);
-          freqMappingDupes[name][channelFreq] = [
-            row, freqMapping[name][channelFreq]
+      if (channelMapping.frequency[filename][channelFreq]) {
+        if (_.isEqual(omitFreqNameAndChannel(row), omitFreqNameAndChannel(channelMapping.frequency[filename][channelFreq]))) { 
+          debug(1)(`detected matching duplicate frequency: ${filename}: ${channelName} - ${channelFreq}`);
+          debug(2)(row, channelMapping.frequency[filename][channelFreq]);
+          channelMapping.frequencyDupes[filename][channelFreq] = [
+            row, channelMapping.frequency[filename][channelFreq]
           ];
-          //its a matching duplicate so we wont add the name entry
-          //regardless if the name isn't also a duplicate
+          //its a matching duplicate so we wont add the filename entry
+          //regardless if the filename isn't also a duplicate
           continue;
         } else {
-          debug(2)(`shared frequencies don't match: ${name}: ${channelName} - ${channelFreq}`);
-          debug(2)(row, freqMapping[name][channelFreq]);
+          debug(2)(`shared frequencies don't match: ${filename}: ${channelName} - ${channelFreq}`);
+          debug(2)(row, channelMapping.frequency[filename][channelFreq]);
           
           //it's a nested array
-          if (isNestedFrequencyMapping(freqMapping[name][channelFreq])) {
-            freqMapping[name][channelFreq] = [row, ...freqMapping[name][channelFreq]];
+          if (isNestedFrequencyMapping(channelMapping.frequency[filename][channelFreq])) {
+            channelMapping.frequency[filename][channelFreq] = [row, ...channelMapping.frequency[filename][channelFreq]];
           } else {
-            freqMapping[name][channelFreq] = [row, freqMapping[name][channelFreq]];
+            channelMapping.frequency[filename][channelFreq] = [row, channelMapping.frequency[filename][channelFreq]];
           }
         }
       } else {
-        freqMapping[name][channelFreq] = row;
+        channelMapping.frequency[filename][channelFreq] = row;
       }
 
-      if (nameMapping[name][channelName]) {
-        debug(1)("detected duplicate name: ", name, channelName);
+      if (channelMapping.name[filename][channelName]) {
+        debug(1)("detected duplicate filename: ", filename, channelName);
         channelName = `${channelName}-${row[0]}`;
-        nameMapping[name][channelName] = row;
+        channelMapping.name[filename][channelName] = row;
       } else {
-        nameMapping[name][channelName] = row;
+        channelMapping.name[filename][channelName] = row;
       }
     }
     doneCb();
-  });
+  }));
 }
-
-
-//@TODO get rid of these global variables
-const distinctFreqMappings = {}
-let mismatchFreqMappings = {};
-const matchingFreqMappings = {};
 
 function compareVaryingFrequencySets({firstFreqMapping, firstFile}, {
   secondFreqMapping, secondFile}, channelFreq, opts) {
@@ -138,7 +110,7 @@ function compareVaryingFrequencySets({firstFreqMapping, firstFile}, {
       const shouldIgnore = shouldIgnoreColumnDifference(firstFreqMapping, secondFreqMapping, opts);
 
       if (!shouldIgnore) {
-        mismatchFreqMappings[channelFreq] = [
+        frequencyMappings.mismatching[channelFreq] = [
           firstFreqMapping,
           secondFreqMapping
         ];
@@ -147,7 +119,7 @@ function compareVaryingFrequencySets({firstFreqMapping, firstFile}, {
       }
     } 
 
-    matchingFreqMappings[channelFreq] = [
+    frequencyMappings.matching[channelFreq] = [
       firstFreqMapping,
       secondFreqMapping
     ];
@@ -172,33 +144,33 @@ function compareFiles(filenames, opts) {
     const firstFile = filenames[0];
     const secondFile = filenames[1];
 
-    distinctFreqMappings[firstFile] = {};
+    frequencyMappings.distinct[firstFile] = {};
 
-    for (const channelFreq in freqMapping[firstFile]) {
-      const firstFreqMapping = freqMapping[firstFile][channelFreq];
-      const secondFreqMapping = freqMapping[secondFile][channelFreq];
+    for (const channelFreq in channelMapping.frequency[firstFile]) {
+      const firstFreqMapping = channelMapping.frequency[firstFile][channelFreq];
+      const secondFreqMapping = channelMapping.frequency[secondFile][channelFreq];
       if (!secondFreqMapping) {
-        distinctFreqMappings[firstFile][channelFreq] = firstFreqMapping;
+        frequencyMappings.distinct[firstFile][channelFreq] = firstFreqMapping;
       } else {
         compareVaryingFrequencySets({firstFreqMapping, firstFile}, {
           secondFreqMapping, secondFile}, channelFreq, opts)  
       }
     }
 
-    const mismatchingFrequencies = _.keys(mismatchFreqMappings);
-    const matchingFrequencies = _.keys(matchingFreqMappings);
+    const mismatchingFrequencies = _.keys(frequencyMappings.mismatching);
+    const matchingFrequencies = _.keys(frequencyMappings.matching);
 
     const intersection = _.intersection(mismatchingFrequencies,  matchingFrequencies);
-    opts.debug(2)(`omitting the intersecting freqMappings from mismatching: ${_.join(intersection)}`);
-    mismatchFreqMappings = _.omit(mismatchFreqMappings, intersection);
+    opts.debug(2)(`omitting the intersecting channelMapping.frequencys from mismatching: ${_.join(intersection)}`);
+    frequencyMappings.mismatching = _.omit(frequencyMappings.mismatching, intersection);
 
-    distinctFreqMappings[secondFile] = {};
+    frequencyMappings.distinct[secondFile] = {};
     
-    for (const channelFreq in freqMapping[secondFile]) {
-      const secondFreqMapping = freqMapping[secondFile][channelFreq];
-      const firstFreqMapping = freqMapping[firstFile][channelFreq];
+    for (const channelFreq in channelMapping.frequency[secondFile]) {
+      const secondFreqMapping = channelMapping.frequency[secondFile][channelFreq];
+      const firstFreqMapping = channelMapping.frequency[firstFile][channelFreq];
       if (!firstFreqMapping) {
-        distinctFreqMappings[secondFile][channelFreq] = secondFreqMapping;
+        frequencyMappings.distinct[secondFile][channelFreq] = secondFreqMapping;
       }
     }
 
@@ -208,28 +180,28 @@ function compareFiles(filenames, opts) {
 
 function statistics({frequency}, {debug}) {
   debug(1)({
-    mismatchFreqMappings: {
-      length: _.keys(mismatchFreqMappings).length,
-      frequencies: _.keys(mismatchFreqMappings),
-      channelFreqMapping: _.mapValues(mismatchFreqMappings, function(o) {
+    mismatching: {
+      length: _.keys(frequencyMappings.mismatching).length,
+      frequencies: _.keys(frequencyMappings.mismatching),
+      channelFreqMapping: _.mapValues(frequencyMappings.mismatching, function(o) {
         return `${o[0][0]} - ${o[0][1]}, ${o[1][0]} - ${o[1][1]}`
       }),
     },
-    matchingFreqMappings: {
-      length: _.keys(matchingFreqMappings).length,
-      frequencies: _.keys(matchingFreqMappings),
-      channelFreqMapping: _.mapValues(matchingFreqMappings, function(o) {
+    matching: {
+      length: _.keys(frequencyMappings.matching).length,
+      frequencies: _.keys(frequencyMappings.matching),
+      channelFreqMapping: _.mapValues(frequencyMappings.matching, function(o) {
         return `${o[0][0]} - ${o[0][1]}, ${o[1][0]} - ${o[1][1]}`
       }),
     },
-    distinctFreqMappings: {
-      length: _.mapValues(distinctFreqMappings, function(o) {
+    distinct: {
+      length: _.mapValues(frequencyMappings.distinct, function(o) {
         return _.keys(o).length
       }),
-      keys: _.mapValues(distinctFreqMappings, function(o) {
+      keys: _.mapValues(frequencyMappings.distinct, function(o) {
         return _.join(_.keys(o))
       }),
-      channelFreqMapping: _.mapValues(distinctFreqMappings, function(o) {
+      channelFreqMapping: _.mapValues(frequencyMappings.distinct, function(o) {
         return _.join(_.map(o, function(v) {
           if (isNestedFrequencyMapping(v)) {
             return _.join(_.map(v, function(x) {
@@ -241,14 +213,14 @@ function statistics({frequency}, {debug}) {
         }), ' | ')
       }),
     },
-    freqMappingDupes: {
-      length: _.mapValues(freqMappingDupes, function(o) {
+    frequencyDupes: {
+      length: _.mapValues(channelMapping.frequencyDupes, function(o) {
         return _.keys(o).length
       }),
-      keys: _.mapValues(freqMappingDupes, function(o) {
+      keys: _.mapValues(channelMapping.frequencyDupes, function(o) {
         return _.join(_.keys(o))
       }),
-      channelFreqMapping: _.mapValues(freqMappingDupes, function(o) {
+      channelFreqMapping: _.mapValues(channelMapping.frequencyDupes, function(o) {
         return _.join(_.map(o, function(v) {
           if (isNestedFrequencyMapping(v)) {
             return _.join(_.map(v, function(x) {
@@ -262,30 +234,30 @@ function statistics({frequency}, {debug}) {
     }
   });
   if (frequency) {
-    if (_.get(mismatchFreqMappings, frequency)) {
+    if (_.get(frequencyMappings.mismatching, frequency)) {
       const {
         mismatchingZipped,
         intersection,
         difference,
         differenceReverse,
         columns,
-      } = compareFrequencyMismatch(mismatchFreqMappings[frequency][0], mismatchFreqMappings[frequency][1]);
+      } = compareFrequencyMismatch(frequencyMappings.mismatching[frequency][0], frequencyMappings.mismatching[frequency][1]);
       debug(1)("Mismatching", mismatchingZipped);
       debug(1)("Intersection", intersection);
       debug(1)(`Mismatching Columns: ${_.join(columns)}`);
       debug(1)("Difference 1 -> 2", difference);
       debug(1)("Difference 2 <- 1", differenceReverse);
-    } else if (_.get(matchingFreqMappings, frequency)) {
-      debug(1)("Matching", _.get(matchingFreqMappings, frequency))
+    } else if (_.get(frequencyMappings.matching, frequency)) {
+      debug(1)("Matching", _.get(frequencyMappings.matching, frequency))
     }
 
-    for (const filename in freqMapping) {
-      const freqItem = freqMapping[filename][frequency];
+    for (const filename in channelMapping.frequency) {
+      const freqItem = channelMapping.frequency[filename][frequency];
       debug(1)(filename);
       if (isNestedFrequencyMapping(freqItem)) {
-        _.map(freqMapping[filename][frequency], (o) => debug(1)(_.zipObject(columnNames, o)));
+        _.map(channelMapping.frequency[filename][frequency], (o) => debug(1)(_.zipObject(columnNames, o)));
       } else {
-        debug(1)(_.zipObject(columnNames, freqMapping[filename][frequency]));
+        debug(1)(_.zipObject(columnNames, channelMapping.frequency[filename][frequency]));
       }
     }
   } 
@@ -318,8 +290,8 @@ function compareFrequencyMismatch(freq1, freq2) {
 
 function buildFileMapping(filename, {debug}) {
   return new Promise(resolve => {
-    buildMappingFromStream(filename, {debug}, async () => {
-      const fileFreqMapping = freqMapping[filename];
+    buildMapping(filename, {debug}, async () => {
+      const fileFreqMapping = channelMapping.frequency[filename];
       let channelCount = 0;
       for (const channelFreq in fileFreqMapping) {
         if (isNestedFrequencyMapping(fileFreqMapping[channelFreq])) {
@@ -334,13 +306,26 @@ function buildFileMapping(filename, {debug}) {
         }
       }
       debug(1)(`\ntotal channel count in ${filename} is ${channelCount}`);
-      if (freqMappingDupes[filename].length > 0) {
-        debug(1)("\n removed duplicates:", freqMappingDupes[filename]);
+      if (channelMapping.frequencyDupes[filename].length > 0) {
+        debug(1)("\n removed duplicates:", channelMapping.frequencyDupes[filename]);
       }
       resolve();
     });
   });
 }
+
+//@TODO get rid of these global variables
+const channelMapping = {
+  frequency: {},
+  name: {},
+  frequencyDupes: {},
+};
+
+const frequencyMappings = {
+  distinct: {},
+  mismatching: {},
+  matching: {},
+};
 
 (async () => {
 
@@ -353,13 +338,12 @@ function buildFileMapping(filename, {debug}) {
   const firstFile = process.argv[2];
   const secondArg = process.argv[3]; 
 
-  let debug;
   let debugLevel = 1;
   if (process.env.DEBUG) {
     debugLevel = parseInt(process.env.DEBUG);
   }
   
-  debug = (level) => {
+  const debug = (level) => {
     if (level <= debugLevel) {
       return function() {
         console.log(...arguments);
