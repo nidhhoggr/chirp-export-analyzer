@@ -46,6 +46,11 @@ class ChirpChannel {
     return row.slice(2);
   }
 
+  static getColumnByName(row, name) {
+    const columnIndex = this.columnNames.indexOf(name);
+    return row[columnIndex];
+  }
+
   getWithoutChannelNumberAndName() {
     return ChirpChannel.omitChannelNumberAndName(this.row)
   }
@@ -65,7 +70,7 @@ class ChirpChannel {
   }
 
   toString() {
-    return `${getColumnByName(this.row, "Location")} - ${getColumnByName(this.row, "Name")}`;
+    return `${ChirpChannel.getColumnByName(this.row, "Location")} - ${ChirpChannel.getColumnByName(this.row, "Name")}`;
   }
 }
 
