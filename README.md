@@ -52,7 +52,7 @@ Usually there will be mismatches based on the power setting alone. When enabling
 The following command will analyze an export CSV file and create two files names export.csv and omitted.csv. The ommitted.csv will contain entries that a duplicates of a particular frequency.
 ```
  ./analyze --export-by=frequency --export-distinct --export-truncate --debug=0 chirp-export.csv
-``
+```
 
 
 ## NOTE
