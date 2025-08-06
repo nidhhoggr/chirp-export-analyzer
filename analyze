@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-
+const fs = require("fs").promises;;
 const _ = require("lodash");
 const ChirpAnalysis = require("./src/ChirpAnalysis");
 const {
@@ -9,17 +9,48 @@ const {
 (async () => {
 
   function help() {
-    console.log("usage:\n\tanalyze export1.csv [export2.csv] [frequency]");
+    console.log("usage:\n\tanalyze export1.csv [export2.csv] [--frequency=xxx.xxx] [--export-by=name|frequency] [--ignore-power-difference]");
     console.log("environment variables:\n\tDEBUG=[int] (values greater than 0 with increments to increase verbosity)");
-    console.log("\tIGNORE_POWER_DIFFERENCE=1 (set to ignore differences in the power)");
   }
 
-  const firstFile = process.argv[2];
-  const secondArg = process.argv[3]; 
+  const parseFlag = (flags, str) => {
+    if (_.startsWith(str, "--")) {
+      const flagStr = _.replace(str, "--", "");
+      const segs = _.split(flagStr, "=");
+      if (segs?.length == 2) {
+         flags[segs[0]] = segs[1];
+      } else {
+        flags[flagStr] = true;
+      }    
+      return true; 
+    }
+    return false;
+  }
+
+  const flags = {};
+  let firstFile = false;
+  let secondFile = false;
+
+  for (let i = 2; i < 9; i++) {
+    const pArg = process.argv[i];
+    const isFlag = parseFlag(flags, pArg);
+    if (!_.isEmpty(pArg) && !isFlag) {
+      if (!firstFile) {
+        firstFile = pArg;
+      } else if (!secondFile) {
+        secondFile = pArg;
+      }
+    } else if (!isFlag) {
+      break;
+    }
+  }
 
   let debugLevel = 1;
+
   if (process.env.DEBUG) {
     debugLevel = parseInt(process.env.DEBUG);
+  } else if (flags["debug"]) {
+    debugLevel = flags["debug"];
   }
   
   const debug = (level) => {
@@ -34,27 +65,53 @@ const {
 
   const opts = {debug};
 
-  if (process.env.IGNORE_POWER_DIFFERENCE) {
+  if (flags["ignore-power-difference"]) {
     opts["ignore_difference_columns"] = ["Power"];
   }
 
   ca = new ChirpAnalysis();
 
-  if (firstFile && secondArg && !isNumber(secondArg)) {
-    const secondFile = secondArg;
-    const frequency = process.argv[4]; 
+  if (firstFile && secondFile) {
     debug(1)(`comparing ${firstFile} and ${secondFile}`);
     await ca.computeChannelMapping(firstFile, opts);
     await ca.computeChannelMapping(secondFile, opts);
     await ca.compareFiles([firstFile, secondFile], opts);
-    await ca.statistics({frequency}, opts);
+    await ca.statistics({frequency: flags["frequency"]}, opts);
 
   } else if (firstFile) {
-    const frequency = process.argv[3]; 
     debug(1)(`analyzing ${firstFile}`);
-    await ca.computeChannelMapping(firstFile, opts);
-    await ca.statistics({frequency}, opts);
+    const computed = await ca.computeChannelMapping(firstFile, opts);
+    for (const i in computed) {
+      //console.log({computed}, Object.values(computed));
+      if (flags['export-by'] == i) {
+        //debug(0)(i);
+        //debug(0)("Count: " + Object.keys(computed[i][firstFile]).length);
+        //debug(0)(computed[i][firstFile]);
+        if (flags['export-distinct']) {
+          try {
+            await fs.truncate(`exported.csv`);
+            await fs.truncate(`omitted.csv`);
+          } catch(err) {
+            console.log(err.message);
+          }
+          const computedFreq = computed[i][firstFile];
+          let omitted = [];
+          for (const i in computedFreq) {
+            if (_.isArray(computedFreq[i][0])) {
+              await fs.appendFile(`exported.csv`, _.join(computedFreq[i][0], ",") + "\n");
+              omitted.push(_.drop(computedFreq[i]));
+            } else {
+              await fs.appendFile(`exported.csv`, _.join(computedFreq[i], ",") + "\n");
+            }
+          }
+          for (const i in omitted) {
+            await fs.appendFile(`omitted.csv`, _.join(omitted[i], ",") + "\n");
+          }
+        }
 
+      }
+    }
+    await ca.statistics({frequency: flags["frequency"]}, opts);
   } else {
 
     help();

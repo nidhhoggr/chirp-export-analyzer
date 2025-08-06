@@ -14,7 +14,7 @@ this is a simple CLI script to analyze a csv export from the Chirp program. It's
 
 This is useful when there are multiple channels sharing the same frequency.
 ```
-./analyze chirp-export.csv 151.940000
+./analyze chirp-export.csv --frequency=151.940000
 ```
 
 ### Compare two separate exports against one another
@@ -27,25 +27,33 @@ This is useful when there are multiple channels sharing the same frequency.
 
 This is useful when there is a shared and/or mismatched frequency.
 ```
-./analyze chirp-export-1.csv chirp-export-2.csv 146.530000
+./analyze chirp-export-1.csv chirp-export-2.csv --frequency=146.530000
 ```
 
 ### Environment Variables
 
 This will disable debugging (enabled by default). Currently this is basically useless.
 ```
-DEBUG=0 ./analyze chirp-export-1.csv chirp-export-2.csv
+./analyze chirp-export-1.csv chirp-export-2.csv --debug=0
 ```
 
 This will increase debugging verbosity.
 ```
-DEBUG=2 ./analyze chirp-export-1.csv chirp-export-2.csv
+./analyze chirp-export-1.csv chirp-export-2.csv --debug=2
 ```
 
 Usually there will be mismatches based on the power setting alone. When enabling this environment variable, there should usually be less mismatches.
 ```
-IGNORE_POWER_DIFFERENCE=1 ./analyze chirp-export-1.csv chirp-export-2.csv
+./analyze chirp-export-1.csv chirp-export-2.csv --ignore-power-difference=1
 ```
+
+
+### Exports
+The following command will analyze an export CSV file and create two files names export.csv and omitted.csv. The ommitted.csv will contain entries that a duplicates of a particular frequency.
+```
+ ./analyze --export-by=frequency --export-distinct --export-truncate --debug=0 chirp-export.csv
+``
+
 
 ## NOTE
 

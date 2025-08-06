@@ -78,7 +78,7 @@ class ChirpAnalysis {
         }
 
         if (this.channelMapping.name[filename][channelName]) {
-          debug(1)("detected duplicate filename: ", filename, channelName);
+          debug(1)("detected duplicate channel name: ", filename, channelName);
           channelName = `${channelName}-${row[0]}`;
           this.channelMapping.name[filename][channelName] = row;
         } else {
@@ -110,7 +110,7 @@ class ChirpAnalysis {
         if (this.channelMapping.frequencyDupes[filename].length > 0) {
           debug(1)("\n removed duplicates:", this.channelMapping.frequencyDupes[filename]);
         }
-        resolve();
+        resolve(this.channelMapping);
       });
     });
   }
