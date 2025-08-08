@@ -19,6 +19,7 @@ class ChirpAnalysis {
       frequency: {},
       name: {},
       frequencyDupes: {},
+      nameDupes: {},
     };
 
     this.frequencyMapping = {
@@ -37,6 +38,9 @@ class ChirpAnalysis {
       }
       if (!this.channelMapping.frequencyDupes[filename]) {
         this.channelMapping.frequencyDupes[filename] = {};
+      }
+      if (!this.channelMapping.nameDupes[filename]) {
+        this.channelMapping.nameDupes[filename] = {};
       }
       if (!this.channelMapping.name[filename]) {
         this.channelMapping.name[filename] = {};
@@ -77,13 +81,19 @@ class ChirpAnalysis {
           this.channelMapping.frequency[filename][channelFreq] = row;
         }
 
-        if (this.channelMapping.name[filename][channelName]) {
+        const channelNameExisting = this.channelMapping.name[filename][channelName];
+
+        if (channelNameExisting) {
           debug(1)("detected duplicate channel name: ", filename, channelName);
+          if (!this.channelMapping.nameDupes[filename][channelName]) {
+            this.channelMapping.nameDupes[filename][channelName] = [row, channelNameExisting];
+          } else {
+            this.channelMapping.nameDupes[filename][channelName].push(row);
+          }
           channelName = `${channelName}-${row[0]}`;
-          this.channelMapping.name[filename][channelName] = row;
-        } else {
-          this.channelMapping.name[filename][channelName] = row;
         }
+
+        this.channelMapping.name[filename][channelName] = row;
       }
       doneCb();
     }));
@@ -209,7 +219,6 @@ class ChirpAnalysis {
         }),
       }
     };
-    debug(1)(statistics);
     let channelComparison = {};
     let channelMapping = {};
     if (frequency) {

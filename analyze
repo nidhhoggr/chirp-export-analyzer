@@ -6,31 +6,68 @@ const {
    isNumber,
 } = require("./src/Utils");
 
+const expectedFlags = {
+  'help': ['show this menu'],
+  'frequency': ['analyze by a specific frequency'],
+  'debug': ['set the debug level verbosity, 0 being least verbose'],
+  'ignore-power-difference':['ignore power differences in channels when comparing two datasets'],
+  'display': ['display a specific computation about an export, e.g. name, frequency, nameDupes, frequencyDupes'],
+  'display-nondistinct': ['display records of a computation which is probably a duplicate. exceptions could be offsets (when filtering by frequency) or frequencies (when filtering by name)'],
+  'display-differences': ['to be used in conjunction with the --display or --display-distinct flags, will output the different values in the channels'],
+  'export-by': ['export by a specific computation e.g. name or frenquency'],
+  'export-distinct': ['only export channels which have one distinct mapping per name|frequency'],
+  'export-truncate': ['empty the contents of the exported.csv and omitted.csv files'],
+  'stats': ['output additional information during single file analysis'],
+};
+
+const exampleUsage = {
+  " --stats file1.csv": "analyze a file",
+  "--stats file1.csv --debug=0": "analyze a file with the lowest debugging verbosity.",
+  "--display=name file1.csv": "analyze the records grouped by the channel name",
+  "--display=frequencyDupes file1.csv": "analyze the assumed duplicate records grouped by the channel frequency",
+  "--display=nameDupes file1.csv": "analyze the assumed duplicate records grouped by the channel name",
+  "--display-nondistinct=frequency file1.csv": "display assumed duplicates grouped by frequency",
+  "--display-nondistinct=name --display-differences file1.csv": "display assumed duplicates grouped by channel name",
+  "--display-nondistinct=frequency --display-differences file1.csv": "display assumed duplicates grouped by frequency and display the difference",
+  "file1.csv file2.csv": "analyze the difference between two files",
+  "file1.csv file2.csv --ignore-power-differences": "analyze the difference between two files while ignoring power differences",
+  "--export-by=frequency --export-distinct --export-truncate file1.csv": "export a file to analyze distinct from assumed duplicate records exported into exprted.csv and omitted.csv respectively"
+}
+
+function help() {
+  console.log("A chirp analysis script to analyze the differences between 1 or more csv files exported from chip");
+  for (const flagName in expectedFlags) {
+    console.log(`\n\t--${flagName}: \n\t\t${expectedFlags[flagName][0]}`);
+  }
+  console.log("\n\nExample Usage\n");
+  for (const i in exampleUsage) {
+    console.log(`\n\tanalyze ${i}: \n\t\t${exampleUsage[i]}`);
+  }
+}
+
+function parseFlag (flags, str) {
+  if (_.startsWith(str, "--")) {
+    const flagStr = _.replace(str, "--", "");
+    const segs = _.split(flagStr, "=");
+    if (segs?.length == 2) {
+      flags[segs[0]] = segs[1];
+    } else {
+      flags[flagStr] = true;
+    }    
+    return true; 
+  }
+  return false;
+}
+
+
+
 (async () => {
-
-  function help() {
-    console.log("usage:\n\tanalyze export1.csv [export2.csv] [--frequency=xxx.xxx] [--export-by=name|frequency] [--ignore-power-difference]");
-    console.log("environment variables:\n\tDEBUG=[int] (values greater than 0 with increments to increase verbosity)");
-  }
-
-  const parseFlag = (flags, str) => {
-    if (_.startsWith(str, "--")) {
-      const flagStr = _.replace(str, "--", "");
-      const segs = _.split(flagStr, "=");
-      if (segs?.length == 2) {
-         flags[segs[0]] = segs[1];
-      } else {
-        flags[flagStr] = true;
-      }    
-      return true; 
-    }
-    return false;
-  }
 
   const flags = {};
   let firstFile = false;
   let secondFile = false;
 
+  //parse flags and files
   for (let i = 2; i < 9; i++) {
     const pArg = process.argv[i];
     const isFlag = parseFlag(flags, pArg);
@@ -53,10 +90,10 @@ const {
     debugLevel = flags["debug"];
   }
   
-  const debug = (level) => {
+  const debug = (level, delim = "") => {
     if (level <= debugLevel) {
       return function() {
-        console.log("\n", ...arguments);
+        console.log("\n" + delim, ...arguments);
       }
     } else {
       return () => {}
@@ -76,23 +113,59 @@ const {
     await ca.computeChannelMapping(firstFile, opts);
     await ca.computeChannelMapping(secondFile, opts);
     await ca.compareFiles([firstFile, secondFile], opts);
-    await ca.statistics({frequency: flags["frequency"]}, opts);
-
+    const stats = await ca.statistics({frequency: flags["frequency"]}, opts);
+    debug(0)(stats);
+    const statistics = _.get(stats, "statistics");
+    if (!flags['display']) {
+      debug(0)(`debug further by specifying one of the following for --display`, Object.keys(statistics));
+    } else {
+      for(const i in statistics) {
+        if (flags['display'] == i) {
+          const computedRecord = statistics[i];
+          debug(0)(computedRecord);
+        }
+      }
+    }
   } else if (firstFile) {
     debug(1)(`analyzing ${firstFile}`);
     const computed = await ca.computeChannelMapping(firstFile, opts);
+    const computedKeys = Object.keys(computed);
+    const computedKeyFlag = flags['display'] || flags['display-nondistinct'] || flags['export-by'];
+    if (!_.isEmpty(computedKeyFlag) && !computedKeys.includes(computedKeyFlag)) {
+      throw new Error(`${computedKeyFlag} is not a valid field. Valid fields include: ${_.join(computedKeys, ",")}`); 
+    }
     for (const i in computed) {
-      //console.log({computed}, Object.values(computed));
+      if (flags['display'] == i) {
+        const computedRecord = computed[i][firstFile];
+        debug(0)(computedRecord);
+      }
+      if (flags['display-nondistinct'] == i) {
+        const computedRecord = computed[i][firstFile];
+        for (const i in computedRecord) {
+          if (_.isArray(computedRecord[i][0])) {
+            debug(0)(`nondistinct: ${i}`);
+            let k = 0;
+            for(const j in computedRecord[i]) {
+              debug(0, "\t")(parseInt(j) + 1, _.join(computedRecord[i][j], ","));
+              if (k > 0 && flags['display-differences']) {
+                debug(0, "\t")("Differences:");
+                debug(0, "\t\t")(_.drop(_.difference(computedRecord[i][j-1], computedRecord[i][j]))); 
+                debug(0, "\t\t")(_.drop(_.difference(computedRecord[i][j], computedRecord[i][j - 1]))); 
+              }
+              k++;
+            }
+          }
+        }
+      }
       if (flags['export-by'] == i) {
-        //debug(0)(i);
-        //debug(0)("Count: " + Object.keys(computed[i][firstFile]).length);
-        //debug(0)(computed[i][firstFile]);
         if (flags['export-distinct']) {
-          try {
-            await fs.truncate(`exported.csv`);
-            await fs.truncate(`omitted.csv`);
-          } catch(err) {
-            console.log(err.message);
+          if (flags['export-truncate']) {
+            try {
+              await fs.truncate(`exported.csv`);
+              await fs.truncate(`omitted.csv`);
+            } catch(err) {
+              console.log(err.message);
+            }
           }
           const computedFreq = computed[i][firstFile];
           let omitted = [];
@@ -111,7 +184,10 @@ const {
 
       }
     }
-    await ca.statistics({frequency: flags["frequency"]}, opts);
+    const stats = await ca.statistics({frequency: flags["frequency"]}, opts);
+    if (flags['stats']) {
+      debug(0)(stats);
+    }
   } else {
 
     help();
